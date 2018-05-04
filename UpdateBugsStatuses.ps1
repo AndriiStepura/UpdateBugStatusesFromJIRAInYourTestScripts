@@ -18,8 +18,12 @@ $Path = "C:\Artifacts\FullTestRunsReports\CheckStatus\TestsFolder" # full for lo
 
 $BugsWithoutStatus = '[\\[]Bug[\\(][\\"]PLEC-(.*)[\\"][\\)][]\\]'
 $BugsWithStatus = '[\\[]Bug[\\(][\\"]PLEC-(.*)[\\"], BugStatus.(.*)[\\)][]\\]'
+$TestCategoryFailingWithoutBugs = '^[ \t]*[\\[]Category[\\(]TestCategory.Failing[\\)][]\\]' # [Category(TestCategory.Failing)] without bug label
 
 $PathArray = @() # Array with all pathes to our files with tests
+
+# Remove [Category(TestCategory.Failing)] if exists without bug labels
+$RemoveTestCategoryFailingWithoutBugs = $true
 
 # set if you want to check also closed statuses
 $CheckClosedBugs = $false
@@ -73,6 +77,23 @@ $AllBugsList = @([pscustomobject]@{})
 
 $AllExistedBugsAndTheyStatusesBeeforeUpdate = @{}
 $AllExistedBugsAndTheyStatusesAtJira = @{}
+
+# This code snippet remove [Category(TestCategory.Failing)] if exists without bug labels
+if($RemoveTestCategoryFailingWithoutBugs){
+echo "Lets remove [Category(TestCategory.Failing)] if exists without bug labels"
+echo "========================================================================="
+Get-ChildItem -recurse $Path -Filter "*.cs" |
+Where-Object { $_.Attributes -ne "Directory"} |
+	ForEach-Object {
+            $tempFilePath = $Path + '\' + $_.Name
+		    If (Get-Content $_.FullName | Select-String -Pattern $TestCategoryFailingWithoutBugs -AllMatches)  {
+                    $tempFileContent = Get-Content $tempFilePath #Save file content to temporary variable
+                    $tempFileContent = $tempFileContent | select-string -pattern $TestCategoryFailingWithoutBugs -notmatch #Remove redundant content from variable
+                    $tempFileContent | Set-Content -Encoding UTF8 $tempFilePath
+                    }      
+                    
+			    }
+}
 
 # This code snippet gets all matches in $Path that end in ".cs".
 echo "Lets create array with all exists bug labels without status"
