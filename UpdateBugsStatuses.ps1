@@ -1,23 +1,28 @@
 #1. MVP - regexp
 #2. DONE - refactor to use not just one dimension arrays {issueNumber, fileToUpdate, oldString, newString}
-#3. ToDO - move JIRA project key NAME as settings variable
-#4. ToDO - refactor with remove slleps
+#3. ToDo - move PLEC as settings variable
+#4. ToDo - refactor with remove slleps
+#5. DONE - add parameeter for reduce redundant calls to JIRA by off status check if bug in Closed status now
 
-#Set actual cookie and all curl arguments except url
+#Set actual cookie and url to JIRA
+$JIRAUrl = 'https://jira.--------------.com'
 $CurlArgument = '-k', '-X', 'GET',
-                '-H', 'cookie: _ga=GA*****************; jira.editor.user.mode=source; atlassian.xsrf.token=**************************************************; crowd.token_key=**************; JSESSIONID=*************************'
+                '-H', 'cookie: _ga=----------; jira.editor.user.mode=source; atlassian.xsrf.token=----------|-----------------------|---; crowd.token_key=---------------------; JSESSIONID=--------------------'
 
 # Default path to curl with GitBash
 $CURLEXE = 'C:\Program Files\Git\mingw64\bin\curl.exe'
 
 # set Your tests folder path
 #$Path = "..\..\Tests\V1_0" # relative
-$Path = "C:\UpdateBugStatusesFromJIRAToC-\ExampleForUpdate" # full for local script debug
+$Path = "C:\Artifacts\FullTestRunsReports\CheckStatus\TestsFolder" # full for local script debug
 
-$BugsWithoutStatus = '[\\[]Bug[\\(][\\"]NAME-(.*)[\\"][\\)][]\\]'
-$BugsWithStatus = '[\\[]Bug[\\(][\\"]NAME-(.*)[\\"], BugStatus.(.*)[\\)][]\\]'
+$BugsWithoutStatus = '[\\[]Bug[\\(][\\"]PLEC-(.*)[\\"][\\)][]\\]'
+$BugsWithStatus = '[\\[]Bug[\\(][\\"]PLEC-(.*)[\\"], BugStatus.(.*)[\\)][]\\]'
 
 $PathArray = @() # Array with all pathes to our files with tests
+
+# set if you want to check also closed statuses
+$CheckClosedBugs = $true
 
 # First of all verify is JIRA available and token valid, so lets check:
 function CallToJira ($issue){
@@ -25,7 +30,7 @@ function CallToJira ($issue){
 
 	# Lets learn PowerShell work with curl, here is our small builder with authorisation and request to one bug status          
 	$CurlArgumentCurrentBug = $CurlArgument;
-	$Url = "https://SET_YOUR_SERVER_IP_or_URL_TO_JIRA/rest/api/2/issue/${issue}?fields=status"
+    $Url = "${JIRAUrl}/rest/api/2/issue/${issue}?fields=status"
 	$CurlArgumentCurrentBug += $Url
 	
 	#Call JIRA API and save response wich contains issue actual status
@@ -60,7 +65,7 @@ function CallToJira ($issue){
 
 }
 
-CallToJira('NAME-1'); 
+CallToJira('PLEC-1'); 
 
 $BugsWithStatuses = @([pscustomobject]@{})
 $BugsWithoutStatuses = @([pscustomobject]@{})
@@ -75,15 +80,17 @@ echo "==========================================================="
 Get-ChildItem -recurse $Path -Filter "*.cs" |
 Where-Object { $_.Attributes -ne "Directory"} |
 	ForEach-Object {
-        $TempBugsArray = @() # create array array for save current document bugs labels
+        $TempBugsArray = @() # create array for save current document bugs labels
 		    If (Get-Content $_.FullName | Select-String -Pattern $BugsWithoutStatus -AllMatches)  {			
 		        $TempBugsArray = Get-Content $_.FullName | Select-String -Pattern $BugsWithoutStatus -AllMatches
                 foreach ($bug in $TempBugsArray)
                     {              
-            	        $bugNumber = $bug -replace '.*NAME-(.*)[\\"].*','NAME-$1';
+            	        $bugNumber = $bug -replace '.*PLEC-(.*)[\\"].*','PLEC-$1';
+                        
                         $BugsWithoutStatuses += @([pscustomobject]@{filePath=$_.FullName; bugLabelOld=$bug; bugNumber=$bugNumber; bugStatusOld='NoStatus'; bugStatusNew=''; needUpdate=1})
+
                         if(!$AllExistedBugsAndTheyStatusesBeeforeUpdate[$bugNumber]){
-                            $AllExistedBugsAndTheyStatusesBeeforeUpdate.Add($bugNumber, 'NoStatus')
+                        $AllExistedBugsAndTheyStatusesBeeforeUpdate.Add($bugNumber, 'NoStatus')
                         }
                     }
 			    }
@@ -99,13 +106,18 @@ Where-Object { $_.Attributes -ne "Directory"} |
 			    $TempBugsArray += Get-Content $_.FullName | Select-String -Pattern $BugsWithStatus -AllMatches
                 foreach ($bug in $TempBugsArray)
                     {              
-                        $bugNumber = $bug -replace '.*NAME-(.*)[\\"].*','NAME-$1';
+                        $bugNumber = $bug -replace '.*PLEC-(.*)[\\"].*','PLEC-$1';
                         $bugStatus = $bug -replace '.*BugStatus.(.*)[\\)].*','$1';
-                        $BugsWithStatuses += @([pscustomobject]@{filePath=$_.FullName; bugLabelOld=$bug; bugNumber=$bugNumber; bugStatusOld=$bugStatus; bugStatusNew=''; needUpdate=0})
                         
-                        if (!$AllExistedBugsAndTheyStatusesBeeforeUpdate.Contains($bugNumber))
-                            {
-                                $AllExistedBugsAndTheyStatusesBeeforeUpdate.Add($bugNumber, $bugStatus)
+                        $BugsWithStatuses += @([pscustomobject]@{filePath=$_.FullName; bugLabelOld=$bug; bugNumber=$bugNumber; bugStatusOld=$bugStatus; bugStatusNew=''; needUpdate=0})
+                       
+                        if (!$AllExistedBugsAndTheyStatusesBeeforeUpdate.Contains($bugNumber)){
+                                if (!$CheckClosedBugs -and $bugStatus -eq 'Closed'){
+                                    # Current bug skiped, according to settings not recheck Closed bugs
+                                }
+                                else {
+                                    $AllExistedBugsAndTheyStatusesBeeforeUpdate.Add($bugNumber, $bugStatus)
+                                }
                             }
                     }
 			    }
@@ -114,6 +126,7 @@ Where-Object { $_.Attributes -ne "Directory"} |
 echo "===================================================="	
 echo "Old labels:"
 $AllExistedBugsAndTheyStatusesBeeforeUpdate | ForEach-Object {$_}
+
 
 echo "===================================================="
 echo "Call JIRA API for receive response which contains actual issues statuses"
