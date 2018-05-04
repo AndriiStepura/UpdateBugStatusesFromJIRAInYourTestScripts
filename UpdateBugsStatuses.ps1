@@ -22,7 +22,7 @@ $BugsWithStatus = '[\\[]Bug[\\(][\\"]PLEC-(.*)[\\"], BugStatus.(.*)[\\)][]\\]'
 $PathArray = @() # Array with all pathes to our files with tests
 
 # set if you want to check also closed statuses
-$CheckClosedBugs = $true
+$CheckClosedBugs = $false
 
 # First of all verify is JIRA available and token valid, so lets check:
 function CallToJira ($issue){
@@ -113,7 +113,7 @@ Where-Object { $_.Attributes -ne "Directory"} |
                        
                         if (!$AllExistedBugsAndTheyStatusesBeeforeUpdate.Contains($bugNumber)){
                                 if (!$CheckClosedBugs -and $bugStatus -eq 'Closed'){
-                                    # Current bug skiped, according to settings not recheck Closed bugs
+                                    # Current bug skipped, according to settings not recheck Closed bugs
                                 }
                                 else {
                                     $AllExistedBugsAndTheyStatusesBeeforeUpdate.Add($bugNumber, $bugStatus)
@@ -165,6 +165,10 @@ echo "Update candidates statuses according to current statuses from JIRA:"
 $AllBugsList | ForEach-Object {
     $_.bugStatusNew = $AllExistedBugsAndTheyStatusesAtJira[$_.bugNumber]
     if($_.bugStatusNew -ne $_.bugStatusOld){$_.needUpdate = 1}
+    if (!$CheckClosedBugs -and $_.bugStatusOld -eq 'Closed'){    
+        # Current bug skiped, according to settings not recheck Closed bugs
+        $_.needUpdate = 0
+    }
 }
 
 echo "===================================================="
